@@ -1,106 +1,84 @@
-var canvas;
-var engine;
-var fps = 30;
+const canvas = document.getElementById('renderCanvas');
+const engine = new BABYLON.Engine(canvas, true);
 
-var canvasX = 500; //pixels ancho
-var canvasY = 500; //pixels alto
-var tileX, tileY;
+const createScene = function () {
+    const scene = new BABYLON.Scene(engine);
+    const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, Math.PI / 2, 10, BABYLON.Vector3.Zero(), scene);
+    camera.setPosition(new BABYLON.Vector3(0, 0, -10));
+    camera.attachControl(canvas, true);
 
-//Variables relacionadas con el tablero de juego
-var tablero;
-var filas = 100; //100
-var columnas = 100; //100
+    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
 
-var blanco = "#FFFFFF";
-var negro = "#000000";
+    const gridSize = 50;
+    const cellSize = 0.2;
+    const grid = [];
+    const cells = [];
 
-function creaArray2D(f, c) {
-  var obj = new Array(f);
-  for (y = 0; y < f; y++) {
-    obj[y] = new Array(c);
-  }
-
-  return obj;
-}
-
-//OBJETO AGENTE O TURMITA
-var Agente = function (x, y, estado) {
-  this.x = x;
-  this.y = y;
-  this.estado = estado; //vivo = 1, muerto = 0
-  this.estadoProx = this.estado; //estado que tendrá en el siguiente ciclo
-
-  this.vecinos = []; //guardamos el listado de sus vecinos
-
-  //Método que añade los vecinos del objeto actual
-  this.addVecinos = function () {
-    var xVecino;
-    var yVecino;
-
-    for (i = -1; i <= 1; i++) {
-      for (j = -1; j <= 1; j++) {
-        xVecino = (this.x + j + columnas) % columnas;
-        yVecino = (this.y + i + filas) % filas;
-
-        //descartamos el agente actual (yo no puedo ser mi propio vecino)
-        if (i != 0 || j != 0) {
-          this.vecinos.push(tablero[yVecino][xVecino]);
+    // Initialize grid and cells
+    for (let x = 0; x < gridSize; x++) {
+        grid[x] = [];
+        cells[x] = [];
+        for (let y = 0; y < gridSize; y++) {
+            grid[x][y] = Math.random() > 0.8 ? 1 : 0; // Randomly alive or dead
+            const cell = BABYLON.MeshBuilder.CreatePlane(`cell_${x}_${y}`, {size: cellSize}, scene);
+            cell.position.x = x * cellSize - gridSize * cellSize / 2;
+            cell.position.y = y * cellSize - gridSize * cellSize / 2;
+            cell.isVisible = grid[x][y] === 1;
+            cells[x][y] = cell;
         }
-      }
-    }
-  };
-
-  this.dibuja = function () {
-    var color;
-
-    if (this.estado == 1) {
-      color = blanco;
-    } else {
-      color = negro;
     }
 
-    // Convertimos coordenadas a WebGL
-    var glX = this.x * tileX;
-    var glY = this.y * tileY;
+    const updateGrid = () => {
+        const newGrid = grid.map(arr => arr.slice());
 
-    // Dibujamos el cuadrado correspondiente
-    scene.beginDrawing();
-    var quad = BABYLON.Mesh.CreateQuad("quad", tileX, tileY, scene);
-    quad.position.x = glX;
-    quad.position.y = 0;
-    quad.position.z = glY;
-    var mat = new BABYLON.StandardMaterial("mat", scene);
-    mat.diffuseColor = new BABYLON.Color3(color);
-    quad.material = mat;
-    scene.endDrawing();
-  };
+        for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridSize; y++) {
+                const neighbors = countNeighbors(x, y);
+                if (grid[x][y] === 1) {
+                    if (neighbors < 2 || neighbors > 3) {
+                        newGrid[x][y] = 0;
+                    }
+                } else {
+                    if (neighbors === 3) {
+                        newGrid[x][y] = 1;
+                    }
+                }
+            }
+        }
 
-  //leyes de Conway
-  this.nuevoCiclo = function () {
-    var suma = 0;
+        for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < gridSize; y++) {
+                grid[x][y] = newGrid[x][y];
+                cells[x][y].isVisible = grid[x][y] === 1;
+            }
+        }
+    };
 
-    //calculamos la cantidad de vecinos vivos
-    for (i = 0; i < this.vecinos.length; i++) {
-      suma += this.vecinos[i].estado;
-    }
+    const countNeighbors = (x, y) => {
+        let count = 0;
+        for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+                if (i === 0 && j === 0) continue;
+                const nx = (x + i + gridSize) % gridSize;
+                const ny = (y + j + gridSize) % gridSize;
+                count += grid[nx][ny];
+            }
+        }
+        return count;
+    };
 
-    //CONWAY
+    scene.onBeforeRenderObservable.add(() => {
+        updateGrid();
+    });
 
-    //Valor por defecto lo dejamos igual
-    this.estadoProx = this.estado;
-
-    //MUERTE: tiene menos de 2 o más de 3
-    if (suma < 2 || suma > 3) {
-      this.estadoProx = 0;
-    }
-
-    //VIDA/REPRODUCCIÓN: tiene exactamente 3 vecinos
-    if (suma == 3) {
-      this.estadoProx = 1;
-    }
-  };
-
-  this.mutacion = function () {
-    this.estado;
-  };
+    return scene;
 };
+
+const scene = createScene();
+engine.runRenderLoop(() => {
+    scene.render();
+});
+
+window.addEventListener('resize', function () {
+    engine.resize();
+});
